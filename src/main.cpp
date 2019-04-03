@@ -2,6 +2,8 @@
 Programa pago inteligente MooviPas
 Plataforma ESP32
 RFID listo
+
+Inclusion de tarjeta SD
 */
 
 #include <Arduino.h>
