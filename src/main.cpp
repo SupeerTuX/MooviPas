@@ -1,6 +1,7 @@
 /*
 Programa pago inteligente MooviPas
 Plataforma ESP32
+RFID listo
 */
 
 #include <Arduino.h>
@@ -40,20 +41,23 @@ void setup() {
   key.keyByte[4] = 0xF2;
   key.keyByte[5] = 0xEB;
 
+  //Hacemos testeo de la conexion WiFi
+  conectarWifi();
+
   mfrc522.PCD_Init();   // Init MFRC522
-  // mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
+  mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
   Serial.println(F("Ingrese su targeta"));
 }
 
 void loop() {
-  // // Buscando una nueva targeta
-  // if ( ! mfrc522.PICC_IsNewCardPresent()) {
-  //   return;
-  // }
-  // // Seleccionamos la targeta
-  // if ( ! mfrc522.PICC_ReadCardSerial()) {
-  //   return;
-  // }
+  // Buscando una nueva targeta
+  if ( ! mfrc522.PICC_IsNewCardPresent()) {
+    return;
+  }
+  // Seleccionamos la targeta
+  if ( ! mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
 
   Serial.println(F("Targeta encontrada"));
 
@@ -85,13 +89,11 @@ void loop() {
     break;
   }
 
-  //Hacemos testeo de la conexion WiFi
-  conectarWifi();
   testGET();
 
-  // //Cerramos operaciones de RFID
-  // mfrc522.PICC_HaltA();
-  // mfrc522.PCD_StopCrypto1();
+  //Cerramos operaciones de RFID
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
 }
 
 
@@ -277,31 +279,41 @@ byte testGET()
   Serial.print("connecting to ");
   Serial.println(host);
 
-    // Use WiFiClient class to create TCP connections
-    WiFiClient client;
-    const int httpPort = 80;
-    if (!client.connect(host, httpPort)) {
-        Serial.println("connection failed");
-        return false;
-    }
+  // Use WiFiClient class to create TCP connections
+  WiFiClient client;
+  const int httpPort = 80;
+  if (!client.connect(host, httpPort)) {
+      Serial.println("connection failed");
+      return false;
+  }
 
-    // We now create a URI for the request
-    String url = "/v1/test";
+  // We now create a URI for the request
+  String url = "/v1/test";
 
-    Serial.print("Requesting URL: ");
-    Serial.println(url);
+  Serial.print("Requesting URL: ");
+  Serial.println(url);
 
-    // This will send the request to the server
-    client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+  // This will send the request to the server
+  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
                  "Host: " + host + "\r\n" +
                  "Connection: close\r\n\r\n");
-    unsigned long timeout = millis();
-    while (client.available() == 0) {
-        if (millis() - timeout > 5000) {
-            Serial.println(">>> Client Timeout !");
-            client.stop();
-            return false;
-        }
-      }
-    return true;
+  unsigned long timeout = millis();
+  while (client.available() == 0) {
+    if (millis() - timeout > 5000) {
+      Serial.println(">>> Client Timeout !");
+      client.stop();
+      return false;
+    }
+  }
+
+  // Read all the lines of the reply from server and print them to Serial
+  while(client.available()) {
+    String line = client.readStringUntil('\r');
+    Serial.print(line);
+  }
+
+  Serial.println();
+  Serial.println("closing connection");
+  return true;
+
 }
