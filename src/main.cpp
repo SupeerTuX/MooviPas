@@ -4,6 +4,7 @@ Plataforma ESP32
 RFID listo
 
 Inclusion de tarjeta SD
+Inclusion de EEPROM
 */
 
 #include <Arduino.h>
@@ -11,18 +12,22 @@ Inclusion de tarjeta SD
 #include <MFRC522.h>
 #include <WiFi.h>
 
+
 #include "def.h"
 #include "flash.h"
+#include "eeprom_aux.h"
 
 
-const char* ssid     = "Terminales";
-const char* password = "#t3rm1n4l35";
+//const char* ssid     = "Terminales";
+//const char* password = "#t3rm1n4l35";
 
-// const char* ssid     = "TuXWork";
-// const char* password = "#TuXDevelop";
+const char* ssid     = "TuXWork";
+const char* password = "#TuXDevelop";
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
 MFRC522::MIFARE_Key key;
+
+config_t config;
 
 void setup() {
   Serial.begin(115200);   // Initialize serial communications with the PC
@@ -32,6 +37,28 @@ void setup() {
   Serial.println();
   Serial.println();
   Serial.println(F("Inicio de programa"));
+
+  // Inicializacion de la EEPROM
+  Serial.println(F("Inicio de EEPROM"));
+  if (!EEPROM.begin(EEPROM_SIZE)) {
+    Serial.println(F("Error al incializar EEPROM"));
+    delay(1000);
+  }
+  else
+  {
+    Serial.println(F("EEPROM OK"));
+  }
+
+  //Cargamos datos iniciales en la EEPROM
+  // Serial.println(F("Cargando datos iniciales"));
+  // eepromDatosIniciales();
+
+  Serial.println(F("Leyendo configiracion"));
+  //Leemos la configuracion 
+  EEPROM_readAnything(0, config);
+  // Configuracion leida
+  Serial.print(F("Autobus ID"));
+  Serial.println(config.AutobusID);
 
   SPI.begin();      // Init SPI bus
 
@@ -319,3 +346,7 @@ byte testGET()
   return true;
 
 }
+
+
+
+
