@@ -1,6 +1,10 @@
 /*
 Programa pago inteligente MooviPas
 Plataforma ESP32
+RFID listo
+
+Inclusion de tarjeta SD
+Inclusion de EEPROM
 */
 
 #include <Arduino.h>
@@ -8,18 +12,22 @@ Plataforma ESP32
 #include <MFRC522.h>
 #include <WiFi.h>
 
+
 #include "def.h"
 #include "flash.h"
+#include "eeprom_aux.h"
 
 
-const char* ssid     = "Terminales";
-const char* password = "#t3rm1n4l35";
+//const char* ssid     = "Terminales";
+//const char* password = "#t3rm1n4l35";
 
-// const char* ssid     = "TuXWork";
-// const char* password = "#TuXDevelop";
+const char* ssid     = "TuXWork";
+const char* password = "#TuXDevelop";
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
 MFRC522::MIFARE_Key key;
+
+config_t config;
 
 void setup() {
   Serial.begin(115200);   // Initialize serial communications with the PC
@@ -29,6 +37,28 @@ void setup() {
   Serial.println();
   Serial.println();
   Serial.println(F("Inicio de programa"));
+
+  // Inicializacion de la EEPROM
+  Serial.println(F("Inicio de EEPROM"));
+  if (!EEPROM.begin(EEPROM_SIZE)) {
+    Serial.println(F("Error al incializar EEPROM"));
+    delay(1000);
+  }
+  else
+  {
+    Serial.println(F("EEPROM OK"));
+  }
+
+  //Cargamos datos iniciales en la EEPROM
+  // Serial.println(F("Cargando datos iniciales"));
+  // eepromDatosIniciales();
+
+  Serial.println(F("Leyendo configiracion"));
+  //Leemos la configuracion 
+  EEPROM_readAnything(0, config);
+  // Configuracion leida
+  Serial.print(F("Autobus ID"));
+  Serial.println(config.AutobusID);
 
   SPI.begin();      // Init SPI bus
 
@@ -40,20 +70,23 @@ void setup() {
   key.keyByte[4] = 0xF2;
   key.keyByte[5] = 0xEB;
 
+  //Hacemos testeo de la conexion WiFi
+  conectarWifi();
+
   mfrc522.PCD_Init();   // Init MFRC522
-  // mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
+  mfrc522.PCD_DumpVersionToSerial();  // Show details of PCD - MFRC522 Card Reader details
   Serial.println(F("Ingrese su targeta"));
 }
 
 void loop() {
-  // // Buscando una nueva targeta
-  // if ( ! mfrc522.PICC_IsNewCardPresent()) {
-  //   return;
-  // }
-  // // Seleccionamos la targeta
-  // if ( ! mfrc522.PICC_ReadCardSerial()) {
-  //   return;
-  // }
+  // Buscando una nueva targeta
+  if ( ! mfrc522.PICC_IsNewCardPresent()) {
+    return;
+  }
+  // Seleccionamos la targeta
+  if ( ! mfrc522.PICC_ReadCardSerial()) {
+    return;
+  }
 
   Serial.println(F("Targeta encontrada"));
 
@@ -85,13 +118,11 @@ void loop() {
     break;
   }
 
-  //Hacemos testeo de la conexion WiFi
-  conectarWifi();
   testGET();
 
-  // //Cerramos operaciones de RFID
-  // mfrc522.PICC_HaltA();
-  // mfrc522.PCD_StopCrypto1();
+  //Cerramos operaciones de RFID
+  mfrc522.PICC_HaltA();
+  mfrc522.PCD_StopCrypto1();
 }
 
 
@@ -277,31 +308,45 @@ byte testGET()
   Serial.print("connecting to ");
   Serial.println(host);
 
-    // Use WiFiClient class to create TCP connections
-    WiFiClient client;
-    const int httpPort = 80;
-    if (!client.connect(host, httpPort)) {
-        Serial.println("connection failed");
-        return false;
-    }
+  // Use WiFiClient class to create TCP connections
+  WiFiClient client;
+  const int httpPort = 80;
+  if (!client.connect(host, httpPort)) {
+      Serial.println("connection failed");
+      return false;
+  }
 
-    // We now create a URI for the request
-    String url = "/v1/test";
+  // We now create a URI for the request
+  String url = "/v1/test";
 
-    Serial.print("Requesting URL: ");
-    Serial.println(url);
+  Serial.print("Requesting URL: ");
+  Serial.println(url);
 
-    // This will send the request to the server
-    client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+  // This will send the request to the server
+  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
                  "Host: " + host + "\r\n" +
                  "Connection: close\r\n\r\n");
-    unsigned long timeout = millis();
-    while (client.available() == 0) {
-        if (millis() - timeout > 5000) {
-            Serial.println(">>> Client Timeout !");
-            client.stop();
-            return false;
-        }
-      }
-    return true;
+  unsigned long timeout = millis();
+  while (client.available() == 0) {
+    if (millis() - timeout > 5000) {
+      Serial.println(">>> Client Timeout !");
+      client.stop();
+      return false;
+    }
+  }
+
+  // Read all the lines of the reply from server and print them to Serial
+  while(client.available()) {
+    String line = client.readStringUntil('\r');
+    Serial.print(line);
+  }
+
+  Serial.println();
+  Serial.println("closing connection");
+  return true;
+
 }
+
+
+
+
