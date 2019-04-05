@@ -11,11 +11,21 @@ Inclusion de EEPROM
 #include <SPI.h>
 #include <MFRC522.h>
 #include <WiFi.h>
-
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <ThreeWire.h>  
+#include <RtcDS1302.h>
 
 #include "def.h"
 #include "flash.h"
 #include "eeprom_aux.h"
+
+
+#if defined(ARDUINO) && ARDUINO >= 100
+#define printByte(args)  write(args);
+#else
+#define printByte(args)  print(args,BYTE);
+#endif
 
 
 //const char* ssid     = "Terminales";
@@ -27,7 +37,18 @@ const char* password = "#TuXDevelop";
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
 MFRC522::MIFARE_Key key;
 
+//Iniciamos el LCD
+LiquidCrystal_I2C lcd(0x27,20,4); 
+
+//RTC
+ThreeWire myWire(27,26,25); // IO, SCLK, CE
+RtcDS1302<ThreeWire> Rtc(myWire);
+
+//Estructura de configuracion
 config_t config;
+
+//Prototipo RTC
+void printDateTime(const RtcDateTime& dt);
 
 void setup() {
   Serial.begin(115200);   // Initialize serial communications with the PC
@@ -62,6 +83,59 @@ void setup() {
 
   SPI.begin();      // Init SPI bus
 
+  //Inicializa el LCD
+  lcd.init();
+  lcd.backlight();
+  lcd.home();
+
+  //LCD Test
+  lcd.print("Hello world...");
+  lcd.setCursor(0, 1);
+  lcd.print(" i ");
+  lcd.printByte(3);
+  lcd.print(" arduinos!");
+
+
+  //Test RTC
+  Serial.print("compiled: ");
+  Serial.print(__DATE__);
+  Serial.println(__TIME__);
+  Rtc.Begin();
+
+  RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
+  printDateTime(compiled);
+  Serial.println();
+
+    if (Rtc.GetIsWriteProtected())
+    {
+        Serial.println("RTC was write protected, enabling writing now");
+        Rtc.SetIsWriteProtected(false);
+    }
+
+    if (!Rtc.GetIsRunning())
+    {
+        Serial.println("RTC was not actively running, starting now");
+        Rtc.SetIsRunning(true);
+    }
+
+    RtcDateTime now = Rtc.GetDateTime();
+    if (now < compiled) 
+    {
+        Serial.println("RTC is older than compile time!  (Updating DateTime)");
+        Rtc.SetDateTime(compiled);
+    }
+    else if (now > compiled) 
+    {
+        Serial.println("RTC is newer than compile time. (this is expected)");
+    }
+    else if (now == compiled) 
+    {
+        Serial.println("RTC is the same as compile time! (not expected but all is fine)");
+    }
+
+
+
+
   //Llave inicial
   key.keyByte[0] = 0x84;
   key.keyByte[1] = 0x8F;
@@ -87,6 +161,11 @@ void loop() {
   if ( ! mfrc522.PICC_ReadCardSerial()) {
     return;
   }
+
+  //Imprimir tiempo
+  RtcDateTime now = Rtc.GetDateTime();
+  printDateTime(now);
+  Serial.println();
 
   Serial.println(F("Targeta encontrada"));
 
@@ -348,5 +427,24 @@ byte testGET()
 }
 
 
+//RTC AUX
+
+#define countof(a) (sizeof(a) / sizeof(a[0]))
+
+void printDateTime(const RtcDateTime& dt)
+{
+    char datestring[20];
+
+    snprintf_P(datestring, 
+            countof(datestring),
+            PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
+            dt.Month(),
+            dt.Day(),
+            dt.Year(),
+            dt.Hour(),
+            dt.Minute(),
+            dt.Second() );
+    Serial.print(datestring);
+}
 
 
