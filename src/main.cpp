@@ -15,6 +15,7 @@ Inclusion de EEPROM
 #include <LiquidCrystal_I2C.h>
 #include <ThreeWire.h>  
 #include <RtcDS1302.h>
+#include <SD.h>
 
 #include "def.h"
 #include "flash.h"
@@ -27,6 +28,8 @@ Inclusion de EEPROM
 #define printByte(args)  print(args,BYTE);
 #endif
 
+//Chipselect para la sd
+const int chipSelect = 15;
 
 //const char* ssid     = "Terminales";
 //const char* password = "#t3rm1n4l35";
@@ -68,6 +71,31 @@ void setup() {
   else
   {
     Serial.println(F("EEPROM OK"));
+  }
+
+  //Inicializando la SD
+  Serial.print("Initializing SD card...");
+
+  // see if the card is present and can be initialized:
+  if (!SD.begin(chipSelect)) {
+    Serial.println("Card failed, or not present");
+    // don't do anything more:
+    while (1);
+  }
+
+  Serial.println("card initialized.");
+  Serial.println("Abriendo Archivo");
+  File dataFile = SD.open("/datalog.txt", FILE_WRITE);
+  // if the file is available, write to it:
+  if (dataFile) {
+    dataFile.println("Test");
+    dataFile.close();
+    // print to the serial port too:
+    Serial.println("Test");
+  }
+  // if the file isn't open, pop up an error:
+  else {
+    Serial.println("error opening datalog.txt");
   }
 
   //Cargamos datos iniciales en la EEPROM
