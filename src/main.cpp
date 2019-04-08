@@ -28,9 +28,6 @@ Inclusion de EEPROM
 #define printByte(args)  print(args,BYTE);
 #endif
 
-//Chipselect para la sd
-const int chipSelect = 15;
-
 //const char* ssid     = "Terminales";
 //const char* password = "#t3rm1n4l35";
 
@@ -44,11 +41,15 @@ MFRC522::MIFARE_Key key;
 LiquidCrystal_I2C lcd(0x27,20,4); 
 
 //RTC
-ThreeWire myWire(27,26,25); // IO, SCLK, CE
+//ThreeWire myWire(27,26,25); // IO, SCLK, CE
+ThreeWire myWire(25,33,32); // IO, SCLK, CE
 RtcDS1302<ThreeWire> Rtc(myWire);
 
 //Estructura de configuracion
 config_t config;
+
+//Clase SPI para uso de sd
+SPIClass spiSD(HSPI);
 
 //Prototipo RTC
 void printDateTime(const RtcDateTime& dt);
@@ -77,10 +78,10 @@ void setup() {
   Serial.print("Initializing SD card...");
 
   // see if the card is present and can be initialized:
-  if (!SD.begin(chipSelect)) {
+  spiSD.begin(14, 27, 26, 15);
+  if (!SD.begin(15, spiSD)) {
     Serial.println("Card failed, or not present");
-    // don't do anything more:
-    while (1);
+    // don't do anything more
   }
 
   Serial.println("card initialized.");
@@ -109,7 +110,8 @@ void setup() {
   Serial.print(F("Autobus ID"));
   Serial.println(config.AutobusID);
 
-  SPI.begin();      // Init SPI bus
+  // Init SPI bus
+  SPI.begin();      
 
   //Inicializa el LCD
   lcd.init();
