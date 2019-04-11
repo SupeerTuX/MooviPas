@@ -58,6 +58,9 @@ void setup() {
   Serial.begin(115200);   // Initialize serial communications with the PC
   while (!Serial);    // Do nothing if no serial port is opened (added for Arduinos based on ATMEGA32U4)
 
+  //Pin buzzer como salida
+  pinMode(BUZZER, OUTPUT);
+
   //Inicio de programa
   Serial.println();
   Serial.println();
@@ -173,6 +176,12 @@ void setup() {
   key.keyByte[3] = 0xBC;
   key.keyByte[4] = 0xF2;
   key.keyByte[5] = 0xEB;
+
+  //Test Buzzer
+  digitalWrite(BUZZER, HIGH);
+  delay(1000);
+  digitalWrite(BUZZER, LOW);
+  
 
   //Hacemos testeo de la conexion WiFi
   conectarWifi();
