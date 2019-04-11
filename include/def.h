@@ -14,6 +14,8 @@
 
 #define RST_PIN             4
 #define SS_PIN              2
+
+#define BUZZER              5
 //Prototipos de funciones
 
 

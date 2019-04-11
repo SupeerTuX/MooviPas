@@ -11,12 +11,22 @@ Inclusion de EEPROM
 #include <SPI.h>
 #include <MFRC522.h>
 #include <WiFi.h>
-
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <ThreeWire.h>  
+#include <RtcDS1302.h>
+#include <SD.h>
 
 #include "def.h"
 #include "flash.h"
 #include "eeprom_aux.h"
 
+
+#if defined(ARDUINO) && ARDUINO >= 100
+#define printByte(args)  write(args);
+#else
+#define printByte(args)  print(args,BYTE);
+#endif
 
 //const char* ssid     = "Terminales";
 //const char* password = "#t3rm1n4l35";
@@ -27,11 +37,29 @@ const char* password = "#TuXDevelop";
 MFRC522 mfrc522(SS_PIN, RST_PIN);  // Create MFRC522 instance
 MFRC522::MIFARE_Key key;
 
+//Iniciamos el LCD
+LiquidCrystal_I2C lcd(0x27,20,4); 
+
+//RTC
+//ThreeWire myWire(27,26,25); // IO, SCLK, CE
+ThreeWire myWire(25,33,32); // IO, SCLK, CE
+RtcDS1302<ThreeWire> Rtc(myWire);
+
+//Estructura de configuracion
 config_t config;
+
+//Clase SPI para uso de sd
+SPIClass spiSD(HSPI);
+
+//Prototipo RTC
+void printDateTime(const RtcDateTime& dt);
 
 void setup() {
   Serial.begin(115200);   // Initialize serial communications with the PC
   while (!Serial);    // Do nothing if no serial port is opened (added for Arduinos based on ATMEGA32U4)
+
+  //Pin buzzer como salida
+  pinMode(BUZZER, OUTPUT);
 
   //Inicio de programa
   Serial.println();
@@ -49,6 +77,31 @@ void setup() {
     Serial.println(F("EEPROM OK"));
   }
 
+  //Inicializando la SD
+  Serial.print("Initializing SD card...");
+
+  // see if the card is present and can be initialized:
+  spiSD.begin(14, 27, 26, 15);
+  if (!SD.begin(15, spiSD)) {
+    Serial.println("Card failed, or not present");
+    // don't do anything more
+  }
+
+  Serial.println("card initialized.");
+  Serial.println("Abriendo Archivo");
+  File dataFile = SD.open("/datalog.txt", FILE_WRITE);
+  // if the file is available, write to it:
+  if (dataFile) {
+    dataFile.println("Test");
+    dataFile.close();
+    // print to the serial port too:
+    Serial.println("Test");
+  }
+  // if the file isn't open, pop up an error:
+  else {
+    Serial.println("error opening datalog.txt");
+  }
+
   //Cargamos datos iniciales en la EEPROM
   // Serial.println(F("Cargando datos iniciales"));
   // eepromDatosIniciales();
@@ -60,7 +113,61 @@ void setup() {
   Serial.print(F("Autobus ID"));
   Serial.println(config.AutobusID);
 
-  SPI.begin();      // Init SPI bus
+  // Init SPI bus
+  SPI.begin();      
+
+  //Inicializa el LCD
+  lcd.init();
+  lcd.backlight();
+  lcd.home();
+
+  //LCD Test
+  lcd.print("Hello world...");
+  lcd.setCursor(0, 1);
+  lcd.print(" i ");
+  lcd.printByte(3);
+  lcd.print(" arduinos!");
+
+
+  //Test RTC
+  Serial.print("compiled: ");
+  Serial.print(__DATE__);
+  Serial.println(__TIME__);
+  Rtc.Begin();
+
+  RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
+  printDateTime(compiled);
+  Serial.println();
+
+    if (Rtc.GetIsWriteProtected())
+    {
+        Serial.println("RTC was write protected, enabling writing now");
+        Rtc.SetIsWriteProtected(false);
+    }
+
+    if (!Rtc.GetIsRunning())
+    {
+        Serial.println("RTC was not actively running, starting now");
+        Rtc.SetIsRunning(true);
+    }
+
+    RtcDateTime now = Rtc.GetDateTime();
+    if (now < compiled) 
+    {
+        Serial.println("RTC is older than compile time!  (Updating DateTime)");
+        Rtc.SetDateTime(compiled);
+    }
+    else if (now > compiled) 
+    {
+        Serial.println("RTC is newer than compile time. (this is expected)");
+    }
+    else if (now == compiled) 
+    {
+        Serial.println("RTC is the same as compile time! (not expected but all is fine)");
+    }
+
+
+
 
   //Llave inicial
   key.keyByte[0] = 0x84;
@@ -69,6 +176,12 @@ void setup() {
   key.keyByte[3] = 0xBC;
   key.keyByte[4] = 0xF2;
   key.keyByte[5] = 0xEB;
+
+  //Test Buzzer
+  digitalWrite(BUZZER, HIGH);
+  delay(1000);
+  digitalWrite(BUZZER, LOW);
+  
 
   //Hacemos testeo de la conexion WiFi
   conectarWifi();
@@ -87,6 +200,11 @@ void loop() {
   if ( ! mfrc522.PICC_ReadCardSerial()) {
     return;
   }
+
+  //Imprimir tiempo
+  RtcDateTime now = Rtc.GetDateTime();
+  printDateTime(now);
+  Serial.println();
 
   Serial.println(F("Targeta encontrada"));
 
@@ -348,5 +466,24 @@ byte testGET()
 }
 
 
+//RTC AUX
+
+#define countof(a) (sizeof(a) / sizeof(a[0]))
+
+void printDateTime(const RtcDateTime& dt)
+{
+    char datestring[20];
+
+    snprintf_P(datestring, 
+            countof(datestring),
+            PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
+            dt.Month(),
+            dt.Day(),
+            dt.Year(),
+            dt.Hour(),
+            dt.Minute(),
+            dt.Second() );
+    Serial.print(datestring);
+}
 
 
