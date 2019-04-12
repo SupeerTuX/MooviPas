@@ -16,6 +16,15 @@
 #define SS_PIN              2
 
 #define BUZZER              5
+
+
+#if defined(ARDUINO) && ARDUINO >= 100
+#define printByte(args)  write(args);
+#else
+#define printByte(args)  print(args,BYTE);
+#endif
+
+
 //Prototipos de funciones
 
 

@@ -22,11 +22,6 @@ Inclusion de EEPROM
 #include "eeprom_aux.h"
 
 
-#if defined(ARDUINO) && ARDUINO >= 100
-#define printByte(args)  write(args);
-#else
-#define printByte(args)  print(args,BYTE);
-#endif
 
 //const char* ssid     = "Terminales";
 //const char* password = "#t3rm1n4l35";
