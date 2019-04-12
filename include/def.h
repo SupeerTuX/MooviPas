@@ -1,32 +1,28 @@
 #include <Arduino.h>
 
-
 //Definiciones de MFRC522
-#define SECTOR_ID     0   //Sector donde se almacena el ID
-#define BLOCK_ID      1   //Bloque del sector donde se almacena el ID
-#define TBLOCK_ID     3   //Bloque del sector NOMBRE usado para autenticacion
+#define SECTOR_ID 0 //Sector donde se almacena el ID
+#define BLOCK_ID 1  //Bloque del sector donde se almacena el ID
+#define TBLOCK_ID 3 //Bloque del sector NOMBRE usado para autenticacion
 
-#define SECTOR_SALDO      2   //Sector donde se almacena el Saldo
-#define BLOCK_SALDO       8   //Bloque del sector donde se almacena el Saldo
-#define TBLOCK_SALDO      11   //Bloque del sector SALDO usado para autenticacion
+#define SECTOR_SALDO 2  //Sector donde se almacena el Saldo
+#define BLOCK_SALDO 8   //Bloque del sector donde se almacena el Saldo
+#define TBLOCK_SALDO 11 //Bloque del sector SALDO usado para autenticacion
 
-#define SALDO_INSUFICIENTE  2
+#define SALDO_INSUFICIENTE 2
 
-#define RST_PIN             4
-#define SS_PIN              2
+#define RST_PIN 4
+#define SS_PIN 2
 
-#define BUZZER              5
-
+#define BUZZER 5
 
 #if defined(ARDUINO) && ARDUINO >= 100
-#define printByte(args)  write(args);
+#define printByte(args) write(args);
 #else
-#define printByte(args)  print(args,BYTE);
+#define printByte(args) print(args, BYTE);
 #endif
 
-
 //Prototipos de funciones
-
 
 byte leerID(char *id);
 
@@ -44,3 +40,5 @@ byte writeBlock(char *dataBlock, byte block, byte trailerBlock);
 byte testGET();
 
 byte conectarWifi();
+
+void initLCD(void);
