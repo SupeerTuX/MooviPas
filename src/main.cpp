@@ -12,10 +12,11 @@ Inclusion de EEPROM
 #include <MFRC522.h>
 #include <WiFi.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
 #include <ThreeWire.h>
 #include <RtcDS1302.h>
 #include <SD.h>
+
+#include <LCD_i2C.h>
 
 #include "def.h"
 #include "flash.h"
@@ -30,19 +31,11 @@ const char *password = "#TuXDevelop";
 MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance
 MFRC522::MIFARE_Key key;
 
-//RTC
-//ThreeWire myWire(27,26,25); // IO, SCLK, CE
-ThreeWire myWire(25, 33, 32); // IO, SCLK, CE
-RtcDS1302<ThreeWire> Rtc(myWire);
-
 //Estructura de configuracion
 config_t config;
 
 //Clase SPI para uso de sd
 SPIClass spiSD(HSPI);
-
-//Prototipo RTC
-void printDateTime(const RtcDateTime &dt);
 
 void setup()
 {
@@ -54,7 +47,6 @@ void setup()
   pinMode(BUZZER, OUTPUT);
 
   //Inicio de programa
-  Serial.println();
   Serial.println();
   Serial.println(F("Inicio de programa"));
 
@@ -81,23 +73,6 @@ void setup()
     // don't do anything more
   }
 
-  Serial.println("card initialized.");
-  Serial.println("Abriendo Archivo");
-  File dataFile = SD.open("/datalog.txt", FILE_WRITE);
-  // if the file is available, write to it:
-  if (dataFile)
-  {
-    dataFile.println("Test");
-    dataFile.close();
-    // print to the serial port too:
-    Serial.println("Test");
-  }
-  // if the file isn't open, pop up an error:
-  else
-  {
-    Serial.println("error opening datalog.txt");
-  }
-
   //Cargamos datos iniciales en la EEPROM
   // Serial.println(F("Cargando datos iniciales"));
   // eepromDatosIniciales();
@@ -105,64 +80,18 @@ void setup()
   Serial.println(F("Leyendo configiracion"));
   //Leemos la configuracion
   EEPROM_readAnything(0, config);
-  // Configuracion leida
-  Serial.print(F("Autobus ID"));
-  Serial.println(config.AutobusID);
 
   // Init SPI bus
   SPI.begin();
 
+  // inicializando el LCD
   initLCD();
 
-  //Test RTC
-  Serial.print("compiled: ");
-  Serial.print(__DATE__);
-  Serial.println(__TIME__);
-  Rtc.Begin();
-
-  RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
-  printDateTime(compiled);
-  Serial.println();
-
-  if (Rtc.GetIsWriteProtected())
+  //Copiando la llave de la configuracion
+  for (byte i = 0; i < 6; i++)
   {
-    Serial.println("RTC was write protected, enabling writing now");
-    Rtc.SetIsWriteProtected(false);
+    key.keyByte[i] = config.key[i];
   }
-
-  if (!Rtc.GetIsRunning())
-  {
-    Serial.println("RTC was not actively running, starting now");
-    Rtc.SetIsRunning(true);
-  }
-
-  RtcDateTime now = Rtc.GetDateTime();
-  if (now < compiled)
-  {
-    Serial.println("RTC is older than compile time!  (Updating DateTime)");
-    Rtc.SetDateTime(compiled);
-  }
-  else if (now > compiled)
-  {
-    Serial.println("RTC is newer than compile time. (this is expected)");
-  }
-  else if (now == compiled)
-  {
-    Serial.println("RTC is the same as compile time! (not expected but all is fine)");
-  }
-
-  //Llave inicial
-  key.keyByte[0] = 0x84;
-  key.keyByte[1] = 0x8F;
-  key.keyByte[2] = 0x69;
-  key.keyByte[3] = 0xBC;
-  key.keyByte[4] = 0xF2;
-  key.keyByte[5] = 0xEB;
-
-  //Test Buzzer
-  digitalWrite(BUZZER, HIGH);
-  delay(1000);
-  digitalWrite(BUZZER, LOW);
 
   //Hacemos testeo de la conexion WiFi
   conectarWifi();
@@ -184,11 +113,6 @@ void loop()
   {
     return;
   }
-
-  //Imprimir tiempo
-  RtcDateTime now = Rtc.GetDateTime();
-  printDateTime(now);
-  Serial.println();
 
   Serial.println(F("Targeta encontrada"));
 
@@ -220,8 +144,6 @@ void loop()
     break;
   }
 
-  testGET();
-
   //Cerramos operaciones de RFID
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
@@ -251,6 +173,8 @@ byte validarTarjeta()
   {
     Serial.print(F("Saldo actual: $"));
     Serial.println(saldo);
+
+    //Escribir operacion en SD
 
     //Ecribir Saldo actual en la tarjeta
     if (writeBlock(saldo, BLOCK_SALDO, TBLOCK_SALDO))
@@ -283,14 +207,15 @@ byte procesoSaldo(char *id, char *saldo)
   if (nSaldo >= 10)
   {
     //Descontamos el costo de pasaje
-    //nSaldo -= cfg.CostoPasaje;
-    //Pasamos el saldo actual de numerico a char[]
+    nSaldo -= config.CostoPasaje;
 
     //Aumentamos el contador de pasaje
-    //cfg.Contador++;
-    //Escribimos la eeprom
-    //EEPROM_writeAnything(0, cfg);
+    config.Contador++;
 
+    //Escribimos la eeprom
+    EEPROM_writeAnything(0, config);
+
+    //Pasamos el saldo actual de numerico a char[]
     dtostrf(nSaldo, 4, 2, saldo);
     return true;
   }
@@ -378,9 +303,6 @@ byte writeBlock(char *dataBlock, byte block, byte trailerBlock)
     return false;
   }
   // Escribiendo la nueva clave en los ultimo block del sector
-  //Serial.print(F("[MOVIIPASS] WR Saldo")); Serial.println(nSaldo);
-  //Serial.print(F("[")); Serial.print(strPrint); Serial.print(F("]"));
-  //dump_byte_array((byte *)strPrint, 16); Serial.println();
   status = (MFRC522::StatusCode)mfrc522.MIFARE_Write(BLOCK_SALDO, (byte *)dataBlock, 16);
   if (status != MFRC522::STATUS_OK)
   {
@@ -462,24 +384,4 @@ byte testGET()
   Serial.println();
   Serial.println("closing connection");
   return true;
-}
-
-//RTC AUX
-
-#define countof(a) (sizeof(a) / sizeof(a[0]))
-
-void printDateTime(const RtcDateTime &dt)
-{
-  char datestring[20];
-
-  snprintf_P(datestring,
-             countof(datestring),
-             PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
-             dt.Month(),
-             dt.Day(),
-             dt.Year(),
-             dt.Hour(),
-             dt.Minute(),
-             dt.Second());
-  Serial.print(datestring);
 }

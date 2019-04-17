@@ -16,13 +16,16 @@
 
 #define BUZZER 5
 
-#if defined(ARDUINO) && ARDUINO >= 100
-#define printByte(args) write(args);
-#else
-#define printByte(args) print(args, BYTE);
-#endif
+// #######################################################
+//              Definiciones generales
+// #######################################################
 
-//Prototipos de funciones
+#define BUZZER_OK 2   //Numero de pitidos
+#define BUZZER_FAIL 4 //Numero de pitidos
+
+// #######################################################
+//       Prototipos de funciones generales
+// #######################################################
 
 byte leerID(char *id);
 
@@ -41,4 +44,14 @@ byte testGET();
 
 byte conectarWifi();
 
-void initLCD(void);
+/**
+ * @brief Alarma (BUZZER) Proceso OK
+ * 
+ */
+void alarmPass(void);
+
+    /**
+ * @brief Alarma (BUZZER) Proceso FAIL
+ * 
+ */
+void alarmFail(void);
