@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <SD.h>
 
 //Definiciones de MFRC522
 #define SECTOR_ID 0 //Sector donde se almacena el ID
@@ -50,8 +51,16 @@ byte conectarWifi();
  */
 void alarmPass(void);
 
-    /**
+/**
  * @brief Alarma (BUZZER) Proceso FAIL
  * 
  */
 void alarmFail(void);
+
+/**
+ * @brief Escribe operaciones en la sd
+ * 
+ */
+void escribirOperacion();
+
+void appendFile(fs::FS &fs, const char *path, const char *message);

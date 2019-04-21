@@ -8,15 +8,15 @@ Inclusion de EEPROM
 */
 
 #include <Arduino.h>
-#include <SPI.h>
+
 #include <MFRC522.h>
 #include <WiFi.h>
-#include <Wire.h>
 #include <ThreeWire.h>
 #include <RtcDS1302.h>
 #include <SD.h>
 
 #include <LCD_i2C.h>
+#include <DS1302_Util.h>
 
 #include "def.h"
 #include "flash.h"
@@ -31,11 +31,11 @@ const char *password = "#TuXDevelop";
 MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance
 MFRC522::MIFARE_Key key;
 
-//Estructura de configuracion
-config_t config;
-
 //Clase SPI para uso de sd
 SPIClass spiSD(HSPI);
+
+//Estructura de configuracion
+config_t config;
 
 void setup()
 {
@@ -49,6 +49,9 @@ void setup()
   //Inicio de programa
   Serial.println();
   Serial.println(F("Inicio de programa"));
+
+  // Init SPI bus
+  SPI.begin();
 
   // Inicializacion de la EEPROM
   Serial.println(F("Inicio de EEPROM"));
@@ -80,9 +83,6 @@ void setup()
   Serial.println(F("Leyendo configiracion"));
   //Leemos la configuracion
   EEPROM_readAnything(0, config);
-
-  // Init SPI bus
-  SPI.begin();
 
   // inicializando el LCD
   initLCD();
@@ -175,6 +175,7 @@ byte validarTarjeta()
     Serial.println(saldo);
 
     //Escribir operacion en SD
+    appendFile(SD, "/log.txt", id);
 
     //Ecribir Saldo actual en la tarjeta
     if (writeBlock(saldo, BLOCK_SALDO, TBLOCK_SALDO))
@@ -384,4 +385,32 @@ byte testGET()
   Serial.println();
   Serial.println("closing connection");
   return true;
+}
+
+/**
+ * @brief Agrega el texto al final del archivo
+ * 
+ * @param fs 
+ * @param path 
+ * @param message 
+ */
+void appendFile(fs::FS &fs, const char *path, const char *message)
+{
+  Serial.printf("Appending to file: %s\n", path);
+
+  File file = fs.open(path, FILE_APPEND);
+  if (!file)
+  {
+    Serial.println("Failed to open file for appending");
+    return;
+  }
+  if (file.print(message))
+  {
+    Serial.println("Message appended");
+  }
+  else
+  {
+    Serial.println("Append failed");
+  }
+  file.close();
 }
