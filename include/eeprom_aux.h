@@ -39,7 +39,5 @@ struct config_t
   byte key[6];
 };
 
-
-
 //Funcion para cargar datos iniciales a la eeprom
 void eepromDatosIniciales(void);

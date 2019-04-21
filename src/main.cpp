@@ -15,18 +15,15 @@ Inclusion de EEPROM
 #include <RtcDS1302.h>
 #include <SD.h>
 
+//Funciones locales Utilitarias
 #include <LCD_i2C.h>
 #include <DS1302_Util.h>
+#include <Wifi_Util.h>
 
 #include "def.h"
 #include "flash.h"
 #include "eeprom_aux.h"
 
-//const char* ssid     = "Terminales";
-//const char* password = "#t3rm1n4l35";
-
-const char *ssid = "TuXWork";
-const char *password = "#TuXDevelop";
 
 MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance
 MFRC522::MIFARE_Key key;
@@ -87,14 +84,15 @@ void setup()
   // inicializando el LCD
   initLCD();
 
+  //Test De conexion a la red Wifi
+  conectarWifi();
+
   //Copiando la llave de la configuracion
   for (byte i = 0; i < 6; i++)
   {
     key.keyByte[i] = config.key[i];
   }
 
-  //Hacemos testeo de la conexion WiFi
-  conectarWifi();
 
   mfrc522.PCD_Init();                // Init MFRC522
   mfrc522.PCD_DumpVersionToSerial(); // Show details of PCD - MFRC522 Card Reader details
@@ -149,6 +147,12 @@ void loop()
   mfrc522.PCD_StopCrypto1();
 }
 
+
+/**
+ * @brief Validacion de ID y Saldo de targeta
+ * 
+ * @return byte 
+ */
 byte validarTarjeta()
 {
   char id[18];
@@ -175,7 +179,13 @@ byte validarTarjeta()
     Serial.println(saldo);
 
     //Escribir operacion en SD
-    appendFile(SD, "/log.txt", id);
+    char strPrint[50];
+    sprintf(strPrint, "%s\n", id);
+    appendFile(SD, "/log.txt", strPrint);
+
+    Serial.println(F("Escribiendo en tarjeta:["));
+    Serial.println(strPrint);
+    Serial.println(F("]"));
 
     //Ecribir Saldo actual en la tarjeta
     if (writeBlock(saldo, BLOCK_SALDO, TBLOCK_SALDO))
@@ -315,76 +325,6 @@ byte writeBlock(char *dataBlock, byte block, byte trailerBlock)
   {
     return true;
   }
-}
-
-byte conectarWifi()
-{
-  Serial.println();
-  Serial.println();
-  Serial.print("Conectando a la red ");
-  Serial.println(ssid);
-
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(WiFi.localIP());
-  return true;
-}
-
-byte testGET()
-{
-  const char *host = "api.moovipas.mx";
-  Serial.print("connecting to ");
-  Serial.println(host);
-
-  // Use WiFiClient class to create TCP connections
-  WiFiClient client;
-  const int httpPort = 80;
-  if (!client.connect(host, httpPort))
-  {
-    Serial.println("connection failed");
-    return false;
-  }
-
-  // We now create a URI for the request
-  String url = "/v1/test";
-
-  Serial.print("Requesting URL: ");
-  Serial.println(url);
-
-  // This will send the request to the server
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-               "Host: " + host + "\r\n" +
-               "Connection: close\r\n\r\n");
-  unsigned long timeout = millis();
-  while (client.available() == 0)
-  {
-    if (millis() - timeout > 5000)
-    {
-      Serial.println(">>> Client Timeout !");
-      client.stop();
-      return false;
-    }
-  }
-
-  // Read all the lines of the reply from server and print them to Serial
-  while (client.available())
-  {
-    String line = client.readStringUntil('\r');
-    Serial.print(line);
-  }
-
-  Serial.println();
-  Serial.println("closing connection");
-  return true;
 }
 
 /**
