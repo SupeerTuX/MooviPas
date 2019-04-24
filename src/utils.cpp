@@ -11,9 +11,9 @@ void alarmPass(void)
     for (byte i = 0; i < BUZZER_OK; i++)
     {
         digitalWrite(BUZZER, HIGH);
-        delay(500);
+        delay(300);
         digitalWrite(BUZZER, LOW);
-        delay(500);
+        delay(300);
     }
 }
 
@@ -26,8 +26,8 @@ void alarmFail(void)
     for (byte i = 0; i < BUZZER_FAIL; i++)
     {
         digitalWrite(BUZZER, HIGH);
-        delay(500);
+        delay(200);
         digitalWrite(BUZZER, LOW);
-        delay(500);
+        delay(200);
     }
 }

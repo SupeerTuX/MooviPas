@@ -14,16 +14,16 @@ Inclusion de EEPROM
 #include <ThreeWire.h>
 #include <RtcDS1302.h>
 #include <SD.h>
+#include <EEPROM.h>
 
 //Funciones locales Utilitarias
 #include <LCD_i2C.h>
 #include <DS1302_Util.h>
 #include <Wifi_Util.h>
+#include <EEprom_Util.h>
 
 #include "def.h"
 #include "flash.h"
-#include "eeprom_aux.h"
-
 
 MFRC522 mfrc522(SS_PIN, RST_PIN); // Create MFRC522 instance
 MFRC522::MIFARE_Key key;
@@ -33,6 +33,8 @@ SPIClass spiSD(HSPI);
 
 //Estructura de configuracion
 config_t config;
+
+unsigned long previousMillis = 0;
 
 void setup()
 {
@@ -46,6 +48,9 @@ void setup()
   //Inicio de programa
   Serial.println();
   Serial.println(F("Inicio de programa"));
+
+  //Iniciando  RTC
+  init_RTC();
 
   // Init SPI bus
   SPI.begin();
@@ -63,9 +68,8 @@ void setup()
   }
 
   //Inicializando la SD
-  Serial.print("Initializing SD card...");
+  Serial.println("Initializing SD card...");
 
-  // see if the card is present and can be initialized:
   spiSD.begin(14, 27, 26, 15);
   if (!SD.begin(15, spiSD))
   {
@@ -74,10 +78,10 @@ void setup()
   }
 
   //Cargamos datos iniciales en la EEPROM
-  // Serial.println(F("Cargando datos iniciales"));
-  // eepromDatosIniciales();
+  //Serial.println(F("Cargando datos iniciales"));
+  //eepromDatosIniciales();
 
-  Serial.println(F("Leyendo configiracion"));
+  Serial.println(F("Leyendo configuracion"));
   //Leemos la configuracion
   EEPROM_readAnything(0, config);
 
@@ -85,7 +89,7 @@ void setup()
   initLCD();
 
   //Test De conexion a la red Wifi
-  conectarWifi();
+  conectarWifi(config.SSID, config.Password);
 
   //Copiando la llave de la configuracion
   for (byte i = 0; i < 6; i++)
@@ -93,6 +97,13 @@ void setup()
     key.keyByte[i] = config.key[i];
   }
 
+  delay(2000);
+
+  //Mensaje de incicio
+  char datestring[20];
+  getDateTime(datestring);
+  Serial.println(datestring);
+  msgPrincipal(datestring, config.Contador, getWifiStatus());
 
   mfrc522.PCD_Init();                // Init MFRC522
   mfrc522.PCD_DumpVersionToSerial(); // Show details of PCD - MFRC522 Card Reader details
@@ -101,6 +112,33 @@ void setup()
 
 void loop()
 {
+  unsigned long currentMillis = millis();
+  delay(500);
+  actualizarHora();
+
+  //Intervalo de tiempo cada 5 minutos
+  if (currentMillis - previousMillis >= 180000)
+  {
+    previousMillis = currentMillis;
+    //Check Wifi status
+    if (!getWifiStatus())
+    {
+      //Mensaje en LCD
+      msgConectandoWiFi();
+      //Intentando conectar al wifi
+      if (conectarWifi(config.SSID, config.Password))
+      {
+        //Enviando los datos de la SD al Servidor
+        readFile(SD, "/log.txt");
+        deleteFile(SD, "/log.txt");
+      }
+      //enviando mensaje principal al LCD
+      char datestring[20];
+      getDateTime(datestring);
+      msgPrincipal(datestring, config.Contador, getWifiStatus());
+    }
+  }
+
   // Buscando una nueva targeta
   if (!mfrc522.PICC_IsNewCardPresent())
   {
@@ -113,6 +151,8 @@ void loop()
   }
 
   Serial.println(F("Targeta encontrada"));
+  //Display mensaje por el lcd
+  msgTargetaEncontrada();
 
   //Validamos la tarjeta
   switch (validarTarjeta())
@@ -121,10 +161,14 @@ void loop()
   case true:
     Serial.println(F("Cobro OK"));
     Serial.println();
+    alarmPass();
     break;
 
   //Fallo de lectura
   case false:
+    //Mensaje de error
+    msgErrorLectura();
+    alarmFail();
     Serial.println(F("Error De R/W"));
     Serial.println();
     break;
@@ -133,6 +177,31 @@ void loop()
   case SALDO_INSUFICIENTE:
     Serial.println(F("Saldo insuficiente"));
     Serial.println();
+    alarmFail();
+    break;
+
+  //Master Key encontrada
+  case MASTER_KEY:
+    //MASTER KEY Encontrada
+    Serial.println(F("Master Key encontrada"));
+    Serial.println(F("Configurando Acces Point..."));
+    char buffer1[20];
+    char buffer2[20];
+    strcpy_P(buffer1, SSID_AP);     //Copiando SSID de la flash a RAM
+    strcpy_P(buffer2, PASSWORD_AP); //Copiando PASSWORD_AP de la flash a RAM
+    //Configurando acces point
+    if (cfgAccesPoint(buffer1, buffer2))
+    {
+      Serial.println(F("Server OK"));
+      msgConfigAP();
+      // Funcion para manejar al cliente entrante
+    }
+    else
+    {
+      Serial.println(F("Error al iniciar el Servidor"));
+      break;
+    }
+
     break;
 
   //Error desconocido
@@ -142,11 +211,16 @@ void loop()
     break;
   }
 
+  //Mensaje de incicio
+  char datestring[20];
+  getDateTime(datestring);
+  Serial.println(datestring);
+  msgPrincipal(datestring, config.Contador, getWifiStatus());
+
   //Cerramos operaciones de RFID
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
 }
-
 
 /**
  * @brief Validacion de ID y Saldo de targeta
@@ -156,36 +230,68 @@ void loop()
 byte validarTarjeta()
 {
   char id[18];
+  char saldo[18];
+
+  //Buscar Master KEY
+  if (leerMaster())
+  {
+    return MASTER_KEY;
+  }
+
   //Leer ID
   if (!leerID(id))
   {
     return false;
   }
 
-  char saldo[18];
   //Leer Saldo
   if (!leerSaldo(saldo))
   {
     return false;
   }
 
+  //Guardamos el saldo anterior
+  char saldoAnterior[18];
+  strcpy(saldoAnterior, saldo);
+
   Serial.print(F("Saldo anterior: $"));
   Serial.println(saldo);
 
   //Procesamos el saldo
-  if (procesoSaldo(id, saldo))
+  if (procesoSaldo(saldo))
   {
     Serial.print(F("Saldo actual: $"));
     Serial.println(saldo);
 
-    //Escribir operacion en SD
-    char strPrint[50];
-    sprintf(strPrint, "%s\n", id);
-    appendFile(SD, "/log.txt", strPrint);
+    //Mostramos saldo en LCD
+    msgMostrarSaldo(saldoAnterior, saldo);
 
-    Serial.println(F("Escribiendo en tarjeta:["));
-    Serial.println(strPrint);
-    Serial.println(F("]"));
+    //Escribir operacion en SD
+    //Formato NumeroSerie=MVA00004&ID=M-109&Fecha=16.02.2019&Hora=18:01:00
+    char strPrint[150];
+    char fecha[15];
+    char hora[15];
+    char cardID[18];
+
+    leerID(cardID);
+    getDate(fecha);
+    getTime(hora);
+    sprintf(strPrint, "NumeroSerie=%s&ID=%s&Fecha=%s&Hora=%s\n", cardID, config.AutobusID, fecha, hora);
+
+    if (getWifiStatus())
+    {
+      //Enviando datos al servidor
+      httpPOST(strPrint);
+      //readFile(SD, "/log.txt");
+    }
+    else
+    {
+      //No hay conexion WiFi, guardamos los datos en la memoria SD
+      appendFile(SD, "/log.txt", strPrint);
+      Serial.println(F("Escribiendo en tarjeta:["));
+      Serial.println(strPrint);
+      Serial.println(F("]"));
+    }
 
     //Ecribir Saldo actual en la tarjeta
     if (writeBlock(saldo, BLOCK_SALDO, TBLOCK_SALDO))
@@ -204,12 +310,13 @@ byte validarTarjeta()
   {
     //Saldo insuficiente
     Serial.println(F("Saldo insuficiente"));
+    msgSaldoInsuficiente(saldo);
     return SALDO_INSUFICIENTE;
   }
 }
 
 //Procesar saldo
-byte procesoSaldo(char *id, char *saldo)
+byte procesoSaldo(char *saldo)
 {
   //Convertir saldo de texto a numero (float)
   float nSaldo = atof(saldo);
@@ -266,6 +373,34 @@ byte readBlock(char *dataBlock, byte block, byte trailerBlock)
     dataBlock[i] = buffer[i];
   }
   return true;
+}
+
+//Buscamos si es una targeta maestra
+byte leerMaster()
+{
+  char master[18];
+  char *pos = NULL; // Puntero para buscar cadena de texto
+  if (readBlock(master, BLOCK_SALDO, TBLOCK_SALDO))
+  {
+    //La lectura se realizo correctamente
+    //Buscamos la llave en la tarjeta
+    pos = strstr_P(master, masterID);
+
+    if (pos != NULL)
+    {
+      return true;
+    }
+    else
+    {
+      Serial.println(F("Master ID NO enontrado"));
+      return false;
+    }
+  }
+  else
+  {
+    Serial.println(F("ERROR al leer el Sector MASTER ID"));
+    return false;
+  }
 }
 
 //Funcion para leer saldo de la tarjeta
@@ -353,4 +488,85 @@ void appendFile(fs::FS &fs, const char *path, const char *message)
     Serial.println("Append failed");
   }
   file.close();
+}
+
+void writeFile(fs::FS &fs, const char *path, const char *message)
+{
+  Serial.printf("Writing file: %s\n", path);
+
+  File file = fs.open(path, FILE_WRITE);
+  if (!file)
+  {
+    Serial.println("Failed to open file for writing");
+    return;
+  }
+  if (file.print(message))
+  {
+    Serial.println("File written");
+  }
+  else
+  {
+    Serial.println("Write failed");
+  }
+  file.close();
+}
+
+void readFile(fs::FS &fs, const char *path)
+{
+  Serial.printf("Reading file: %s\n", path);
+
+  File file = fs.open(path);
+  if (!file)
+  {
+    Serial.println("Failed to open file for reading");
+    return;
+  }
+
+  Serial.print("Read from file: ");
+
+  while (file.available())
+  {
+    //leemos los datos de la sd
+    String data = file.readStringUntil('\n');
+    //Enviamos por post la cadena leida dela SD
+    httpPOSTString(data);
+  }
+  file.close();
+}
+
+void deleteFile(fs::FS &fs, const char *path)
+{
+  Serial.printf("Deleting file: %s\n", path);
+  if (fs.remove(path))
+  {
+    Serial.println("File deleted");
+  }
+  else
+  {
+    Serial.println("Delete failed");
+  }
+}
+
+/**
+ * @brief Actualizar fecha y hora del display
+ * 
+ */
+void actualizarHora(void)
+{
+  char datestring[20];
+  getDateTime(datestring);
+  //Serial.println(datestring);
+  msgMostrarHora(datestring);
+}
+
+byte getWifiStatus(void)
+{
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    return true;
+  }
+  else
+  {
+    return false;
+  }
 }

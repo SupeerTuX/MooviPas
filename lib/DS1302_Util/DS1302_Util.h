@@ -8,3 +8,9 @@ void printDateTime(const RtcDateTime &dt);
 void init_RTC(void);
 
 void printTime(void);
+
+void getDateTime(char *datestring);
+
+void getDate(char *fecha);
+
+void getTime(char *hora);
